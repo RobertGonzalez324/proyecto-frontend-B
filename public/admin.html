@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav>
+        <div class="nav-left">
+            <button class="btn-flecha" id="btn-volver" title="Volver">&#8592;</button>
+        </div>
+        <h2 class="nav-center">Panel de Administración</h2>
+        <div class="nav-right">
+            <span style="color: #ffc107; font-weight: bold; font-size: 0.9rem;">ADMIN</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h3>Reportes Estadísticos Consolidados</h3>
+        <p>Selecciona una encuesta para procesar y ver sus resultados detallados:</p>
+        <div id="lista-admin-encuestas"></div>
+        <div id="reporte-resultados" style="margin-top: 20px; background: #fafafa; padding: 15px; border-radius: 5px;"></div>
+    </div>
+
+    <script>
+        const usuario = JSON.parse(sessionStorage.getItem('usuario'));
+        if (!usuario || usuario.rol !== 'admin') {
+            alert('Acceso no autorizado. Se requieren permisos de administrador.');
+            window.location.href = 'index.html';
+        }
+
+        async function cargarPanelAdmin() {
+            try {
+                const res = await fetch('/api/encuestas');
+                const encuestas = await res.json();
+                const contenedor = document.getElementById('lista-admin-encuestas');
+                contenedor.innerHTML = '';
+
+                if (encuestas.length === 0) {
+                    contenedor.innerHTML = '<p>No hay encuestas registradas.</p>';
+                    return;
+                }
+
+                encuestas.forEach(e => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'border: 1px solid #ccc; padding: 12px; margin-bottom: 8px; border-radius: 4px; background: white; display: flex; justify-content: space-between; align-items: center;';
+                    div.innerHTML = `
+                        <span><strong>${e.titulo}</strong></span>
+                        <button class="btn-primary" style="width: auto; margin: 0; padding: 6px 12px;" onclick="verReporte('${e._id}')">Consolidar y Ver Reporte</button>
+                    `;
+                    contenedor.appendChild(div);
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        window.verReporte = async (id) => {
+            const contenedorRep = document.getElementById('reporte-resultados');
+            contenedorRep.innerHTML = '<p>Generando reporte estadístico desde la base de datos...</p>';
+
+            try {
+                const res = await fetch(`/api/encuestas/${id}/consolidar`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    contenedorRep.innerHTML = `<p style="color: red;">${data.mensaje || data.error}</p>`;
+                    return;
+                }
+
+                let html = `<h4>Total de Participantes: ${data.reporte.totalParticipantes}</h4><hr>`;
+                const resultados = data.reporte.resultadosContabilizados;
+
+                for (const [pregunta, opciones] of Object.entries(resultados)) {
+                    html += `<div style="margin-bottom: 15px;"><strong>${pregunta}</strong><ul style="margin: 5px 0; padding-left: 20px;">`;
+                    for (const [opcion, votos] of Object.entries(opciones)) {
+                        html += `<li>${opcion}: <strong>${votos} voto(s)</strong></li>`;
+                    }
+                    html += `</ul></div>`;
+                }
+
+                contenedorRep.innerHTML = html;
+            } catch (err) {
+                contenedorRep.innerHTML = '<p style="color: red;">Error al obtener el reporte.</p>';
+            }
+        };
+
+        document.getElementById('btn-volver').addEventListener('click', () => {
+            sessionStorage.removeItem('usuario');
+            window.location.href = 'index.html';
+        });
+
+        cargarPanelAdmin();
+    </script>
+</body>
+</html>

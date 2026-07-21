@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responder Encuesta</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav>
+        <div class="nav-left">
+            <button class="btn-flecha" id="btn-volver" title="Volver">&#8592;</button>
+        </div>
+        <h2 class="nav-center">Responder Encuestas</h2>
+        <div class="nav-right">
+            <span id="nombre-usuario" style="color: white; font-weight: bold; font-size: 0.9rem;"></span>
+        </div>
+    </nav>
+
+    <!-- Vista de Lista de Encuestas -->
+    <div class="container" id="vista-lista">
+        <h3>Encuestas Disponibles</h3>
+        <p>Selecciona una opción para comenzar a responder:</p>
+        <div id="lista-encuestas"></div>
+    </div>
+
+    <!-- Vista del Formulario de la Encuesta -->
+    <div class="container" id="vista-formulario" style="display: none;">
+        <h2 id="titulo-encuesta"></h2>
+        <p id="desc-encuesta" style="color: #666;"></p>
+        <form id="form-responder">
+            <div id="contenedor-preguntas"></div>
+            <button type="submit" class="btn-primary">Enviar Respuestas</button>
+        </form>
+    </div>
+
+    <script>
+        const usuario = JSON.parse(sessionStorage.getItem('usuario'));
+        if (!usuario) {
+            window.location.href = 'index.html'; // Seguridad básica si no hay sesión
+        } else {
+            document.getElementById('nombre-usuario').textContent = usuario.nombre;
+        }
+
+        let encuestaActual = null;
+
+        async function cargarEncuestas() {
+            try {
+                const res = await fetch('/api/encuestas');
+                const encuestas = await res.json();
+                const contenedor = document.getElementById('lista-encuestas');
+                contenedor.innerHTML = '';
+
+                if (encuestas.length === 0) {
+                    contenedor.innerHTML = '<p>No hay encuestas creadas todavía.</p>';
+                    return;
+                }
+
+                encuestas.forEach(e => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 5px; background: #fafafa;';
+                    div.innerHTML = `
+                        <h4>${e.titulo}</h4>
+                        <p>${e.descripcion}</p>
+                        <button class="btn-primary" onclick="seleccionarEncuesta('${e._id}')">Responder</button>
+                    `;
+                    contenedor.appendChild(div);
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        window.seleccionarEncuesta = async (id) => {
+            const res = await fetch('/api/encuestas');
+            const encuestas = await res.json();
+            encuestaActual = encuestas.find(e => e._id === id);
+            if (!encuestaActual) return;
+
+            document.getElementById('titulo-encuesta').textContent = encuestaActual.titulo;
+            document.getElementById('desc-encuesta').textContent = encuestaActual.descripcion;
+
+            const contPreguntas = document.getElementById('contenedor-preguntas');
+            contPreguntas.innerHTML = '';
+
+            encuestaActual.preguntas.forEach((item, idx) => {
+                let opcionesHTML = '';
+                // Escala estandarizada de 5 opciones para facilitar el procesamiento
+                const opcionesFijas = ["Totalmente de acuerdo", "De acuerdo", "Neutral", "En desacuerdo", "Totalmente en desacuerdo"];
+                
+                opcionesFijas.forEach(op => {
+                    opcionesHTML += `
+                        <label style="display: block; margin: 6px 0; cursor: pointer;">
+                            <input type="radio" name="p_${idx}" value="${op}" required> ${op}
+                        </label>
+                    `;
+                });
+
+                const pCard = document.createElement('div');
+                pCard.className = 'pregunta-card';
+                pCard.innerHTML = `<p><strong>${item.pregunta}</strong></p>${opcionesHTML}`;
+                contPreguntas.appendChild(pCard);
+            });
+
+            document.getElementById('vista-lista').style.display = 'none';
+            document.getElementById('vista-formulario').style.display = 'block';
+        };
+
+        document.getElementById('form-responder').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const respuestas = [];
+            encuestaActual.preguntas.forEach((item, idx) => {
+                const seleccion = document.querySelector(`input[name="p_${idx}"]:checked`);
+                if (seleccion) {
+                    respuestas.push({ pregunta: item.pregunta, respuesta: seleccion.value });
+                }
+            });
+
+            try {
+                const res = await fetch(`/api/encuestas/${encuestaActual._id}/responder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuarioEmail: usuario.email, respuestas })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+
+                alert('¡Encuesta enviada con éxito!');
+                window.location.reload();
+            } catch (err) {
+                alert('Error al enviar: ' + err.message);
+            }
+        });
+
+        document.getElementById('btn-volver').addEventListener('click', () => {
+            const vistaForm = document.getElementById('vista-formulario');
+            if (vistaForm.style.display === 'block') {
+                vistaForm.style.display = 'none';
+                document.getElementById('vista-lista').style.display = 'block';
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        cargarEncuestas();
+    </script>
+</body>
+</html>
